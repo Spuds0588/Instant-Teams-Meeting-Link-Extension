@@ -6,8 +6,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial load of recent links
     loadRecentLinks();
 
-    // Event listener for the generate button
-    generateButton.addEventListener('click', () => {
+    // Listen for the "Generate" button click
+    generateButton.addEventListener('click', handleGenerateClick);
+    
+    // Listen for updates from the background script
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message.type === 'linksUpdated') {
+            console.log('Popup received linksUpdated message, reloading list.');
+            loadRecentLinks();
+        }
+    });
+
+    function handleGenerateClick() {
         generateButton.disabled = true;
         generateButton.textContent = 'Generating...';
 
@@ -15,29 +25,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.success) {
                 generateButton.textContent = 'Copied!';
                 generateButton.classList.add('success');
-                // Refresh the list to show the new link
-                loadRecentLinks();
+                // The list will be reloaded automatically by the 'linksUpdated' message listener
             } else {
                 generateButton.textContent = 'Error!';
                 generateButton.classList.add('error');
                 console.error('Popup received error:', response.message);
             }
             
-            // Reset button state after a delay
             setTimeout(() => {
                 generateButton.disabled = false;
                 generateButton.textContent = 'Generate New Link';
                 generateButton.classList.remove('success', 'error');
             }, 2500);
         });
-    });
-
-    /**
-     * Fetches and renders the list of recent links.
-     */
+    }
+    
     function loadRecentLinks() {
         chrome.runtime.sendMessage({ type: 'getRecentLinks' }, (response) => {
-            if (chrome.runtime.lastError) {
+            if (!response || chrome.runtime.lastError) {
                 emptyMessage.textContent = 'Error loading links.';
                 emptyMessage.classList.remove('hidden');
                 return;
@@ -54,10 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * Renders the list items in the popup.
-     * @param {string[]} links - Array of URL strings.
-     */
     function renderLinks(links) {
         linksList.innerHTML = '';
         links.forEach(link => {
