@@ -11,6 +11,7 @@ const MS_TOKEN_ENDPOINT = 'https://login.microsoftonline.com/common/oauth2/v2.0/
 const CONTEXT_MENU_ID = 'generateTeamsMeetingLink';
 const RECENT_LINKS_STORAGE_KEY = 'recentMeetingLinks';
 const MAX_RECENT_LINKS = 3;
+const PLACEHOLDER_TEXT = '*Generating meeting link...*'; // Placeholder text constant
 
 // =================================================================================
 //                            EXTENSION SETUP & LISTENERS
@@ -58,13 +59,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // =================================================================================
 
 async function handleGenerateRequest(request) {
+  let placeholderInjected = false;
   try {
     if (AZURE_APP_CLIENT_ID === 'YOUR_AZURE_APPLICATION_CLIENT_ID_GOES_HERE') {
         throw new Error("Azure Client ID is not configured.");
     }
-    const meetingUrl = await performLinkGeneration();
 
-    // The auto-clipboard step is completely removed.
+    // --- INSTANT FEEDBACK LOGIC ---
+    if (request.from === 'contextMenu' && request.tab) {
+        console.log("Injecting placeholder text...");
+        await injectScript(request.tab.id, insertTextAtCursor, [PLACEHOLDER_TEXT]);
+        placeholderInjected = true;
+    }
+    // -----------------------------
+
+    const meetingUrl = await performLinkGeneration();
 
     const linkData = {
       url: meetingUrl,
@@ -76,12 +85,21 @@ async function handleGenerateRequest(request) {
     if (request.from === 'contextMenu') {
       await attemptPageInjection(request.tab.id, meetingUrl);
     } else {
-      // If generated from popup, the link is now in history. Let the user copy it from there.
       showNotification('popup-success', 'Link Created!', 'A new meeting link has been added to your history.');
     }
     return { success: true, url: meetingUrl };
   } catch (error) {
     console.error("Error in generation flow:", error);
+
+    // --- CLEANUP LOGIC ---
+    if (placeholderInjected && request.tab) {
+        console.log("Cleaning up placeholder text due to error...");
+        await injectScript(request.tab.id, removePlaceholder, [PLACEHOLDER_TEXT]).catch(cleanupError => {
+            console.error("Failed to cleanup placeholder text:", cleanupError);
+        });
+    }
+    // ---------------------
+    
     const userMessage = error.userMessage || error.message || 'An unexpected error occurred.';
     showNotification('error-notification', 'Error', userMessage);
     return { success: false, message: userMessage };
@@ -102,11 +120,12 @@ async function performLinkGeneration() {
 
 async function attemptPageInjection(tabId, url) {
   try {
-    await injectScript(tabId, insertAndReplaceText, [url]);
-    // Updated notification text
+    // Replace the placeholder that was already injected.
+    await injectScript(tabId, replacePlaceholder, [PLACEHOLDER_TEXT, url]);
     showNotification('injection-success', 'Success!', 'Teams meeting link has been inserted.');
   } catch (injectionError) {
-    // Updated notification text to guide the user to the popup
+    // If replacement fails, try to clean up the original placeholder.
+    await injectScript(tabId, removePlaceholder, [PLACEHOLDER_TEXT]).catch(err => {});
     showNotification('injection-failed', 'Insertion Failed', 'Could not insert link. It is available in the popup.');
   }
 }
@@ -138,33 +157,59 @@ function showNotification(id, title, message) {
   });
 }
 
-// ...The rest of the file is unchanged but included for completeness...
 async function injectScript(tabId, func, args) {
-  await chrome.scripting.executeScript({ target: { tabId }, func, args });
+  await chrome.scripting.executeScript({ target: { tabId: tabId }, func: func, args: args });
 }
-function insertAndReplaceText(finalUrl) {
-  const placeholder = '*Generating meeting link...*';
-  const el = document.activeElement; if (!el) return;
-  function insertText(text) {
-    if (el.isContentEditable) {
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
+
+// =================================================================================
+//                        INJECTABLE CONTENT SCRIPT FUNCTIONS
+// =================================================================================
+
+function insertTextAtCursor(textToInsert) {
+  const el = document.activeElement;
+  if (!el || !textToInsert) return;
+  if (el.isContentEditable) {
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
         const range = selection.getRangeAt(0); range.deleteContents();
-        range.insertNode(document.createTextNode(text));
-      }
-    } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      const start = el.selectionStart, end = el.selectionEnd;
-      el.value = el.value.substring(0, start) + text + el.value.substring(end);
-      el.selectionStart = el.selectionEnd = start + text.length;
+        range.insertNode(document.createTextNode(textToInsert));
     }
-  }
-  insertText(placeholder);
-  if (el.value?.includes(placeholder)) {
-    el.value = el.value.replace(placeholder, finalUrl);
-  } else if (el.isContentEditable) {
-    el.innerHTML = el.innerHTML.replace(placeholder, `<a href="${finalUrl}">${finalUrl}</a>`);
+  } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+    const start = el.selectionStart, end = el.selectionEnd;
+    el.value = el.value.substring(0, start) + textToInsert + el.value.substring(end);
+    el.selectionStart = el.selectionEnd = start + textToInsert.length;
   }
 }
+
+function replacePlaceholder(placeholder, finalUrl) {
+    const el = document.activeElement;
+    if (!el) return;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        if (el.value.includes(placeholder)) {
+            el.value = el.value.replace(placeholder, finalUrl);
+        }
+    } else if (el.isContentEditable) {
+        if ((el.textContent || "").includes(placeholder)) {
+            el.innerHTML = el.innerHTML.replace(placeholder, `<a href="${finalUrl}">${finalUrl}</a>`);
+        }
+    }
+}
+
+function removePlaceholder(placeholder) {
+    const el = document.activeElement;
+    if (!el) return;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        if (el.value.includes(placeholder)) {
+            el.value = el.value.replace(placeholder, '');
+        }
+    } else if (el.isContentEditable) {
+        if ((el.textContent || "").includes(placeholder)) {
+            el.innerHTML = el.innerHTML.replace(placeholder, '');
+        }
+    }
+}
+
+// ... The rest of the file (Authentication and Graph API calls) is unchanged ...
 async function getAuthToken(interactive) {try {const tokenInfo = await chrome.storage.local.get(['accessToken', 'refreshToken', 'tokenExpires']);if (tokenInfo.accessToken && tokenInfo.tokenExpires && new Date(tokenInfo.tokenExpires) > new Date()) {return tokenInfo.accessToken;}if (tokenInfo.refreshToken) {return await refreshAccessToken(tokenInfo.refreshToken);}if (interactive) {return await performInteractiveLogin();} const err=new Error("No valid token and non-interactive."); err.userMessage = "Please log in to Microsoft Teams first."; throw err;} catch (error) { const customError = new Error('Authentication process failed.'); customError.userMessage = error.userMessage || 'Could not authenticate with Microsoft.'; throw customError;}}
 async function performInteractiveLogin() {const { verifier, challenge } = await generatePkceChallenge();const redirectUri = chrome.identity.getRedirectURL();const authUrl = new URL(MS_AUTH_ENDPOINT);authUrl.searchParams.append('client_id', AZURE_APP_CLIENT_ID);authUrl.searchParams.append('response_type', 'code');authUrl.searchParams.append('redirect_uri', redirectUri);authUrl.searchParams.append('scope', MS_GRAPH_SCOPES.join(' '));authUrl.searchParams.append('code_challenge', challenge);authUrl.searchParams.append('code_challenge_method', 'S256');authUrl.searchParams.append('prompt', 'select_account');const resultUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl.href, interactive: true });if (chrome.runtime.lastError || !resultUrl) {throw new Error(`Login failed or was cancelled.`);}const authCode = new URL(resultUrl).searchParams.get('code');if (!authCode) { throw new Error('Could not extract authorization code.'); }return await exchangeCodeForTokens(authCode, verifier, redirectUri);}
 async function exchangeCodeForTokens(authCode, codeVerifier, redirectUri) {const tokenRequestBody = new URLSearchParams({client_id: AZURE_APP_CLIENT_ID, grant_type: 'authorization_code',code: authCode, redirect_uri: redirectUri, code_verifier: codeVerifier,});const response = await fetch(MS_TOKEN_ENDPOINT, {method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: tokenRequestBody,});const tokenData = await response.json();if (!response.ok) { throw new Error(`Token exchange failed: ${tokenData.error_description || response.statusText}`); }await storeTokens(tokenData);return tokenData.access_token;}

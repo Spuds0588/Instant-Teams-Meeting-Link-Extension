@@ -3,135 +3,165 @@ body {
     font-size: 14px;
     margin: 0;
     width: 380px;
-    color: #1f1f1f;
-    background-color: #fdfdfd;
+    color: #000000; /* True Black for main text */
+    background-color: #FFFFFF; /* True White for main background */
 }
+
 .header {
-    background-color: #464775;
-    color: white;
+    background-color: #404580; /* Dark, saturated purple */
+    color: #FFFFFF; /* True White */
     padding: 12px 16px;
     text-align: center;
 }
+
 h1 {
     font-size: 16px;
     margin: 0;
     font-weight: 600;
 }
+
 #links-container {
     padding: 0;
     max-height: 300px;
     overflow-y: auto;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid #D4D6F0; /* Light lavender border */
 }
+
 #links-list {
     list-style: none;
     padding: 0;
     margin: 0;
 }
+
 .link-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid #D4D6F0; /* Light lavender separator */
     transition: opacity 0.3s ease;
 }
+
 .link-item:last-child {
     border-bottom: none;
 }
+
 .link-info {
     display: flex;
     flex-direction: column;
     margin-right: 10px;
     min-width: 0;
 }
+
 .link-title {
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 14px;
-    color: #1a1a1a;
+    color: #000000; /* True Black */
 }
+
 .link-url {
     font-size: 12px;
-    color: #0078d4;
+    color: #6269D1; /* Primary purple for links */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
 .link-meta {
     font-size: 11px;
-    color: #666;
+    color: #404580; /* Dark purple for secondary text */
+    opacity: 0.8;
     margin-top: 4px;
 }
+
 .link-actions {
     display: flex;
     flex-direction: column;
     gap: 5px;
     flex-shrink: 0;
 }
+
 .copy-button, .remove-button {
-    border: 1px solid #ccc;
+    border: 1px solid #A6ACE5; /* Medium light lavender border */
     border-radius: 4px;
     padding: 4px 8px;
     cursor: pointer;
     font-size: 12px;
-    background-color: #f5f5f5;
+    font-weight: 500;
+    background-color: #FFFFFF; /* True White */
+    color: #404580; /* Dark purple text */
     transition: background-color 0.2s ease, color 0.2s ease;
 }
+
 .copy-button:hover {
-    background-color: #e0e0e0;
+    background-color: #D4D6F0; /* Lightest lavender for hover */
+    border-color: #8D94D9;
 }
+
 .copy-button.copied {
-    background-color: #107c10;
-    color: white;
+    background-color: #107c10; /* Keep universal green for success feedback */
+    color: #FFFFFF;
     border-color: #107c10;
 }
+
 .remove-button {
+    /* Keeping a distinct red for destructive actions is a UX best practice */
     background-color: #fbeae5;
     color: #c42b1c;
     border-color: #f1bdb6;
 }
+
 .remove-button:hover {
     background-color: #f1bdb6;
 }
+
 #empty-message {
     padding: 20px;
     text-align: center;
-    color: #666;
-    font-style: italic;
+    color: #404580;
+    background-color: #F7F7FA;
+    margin: 0;
 }
+
 .hidden {
     display: none;
 }
+
 .footer {
     padding: 12px;
-    background-color: #f5f5f5;
+    background-color: #F7F7FA; /* A very light neutral grey to not compete with palette */
 }
+
 #generate-button {
     width: 100%;
     padding: 10px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    background-color: #0078d4;
-    color: white;
+    background-color: #6269D1; /* Primary purple */
+    color: #FFFFFF; /* True White */
     border: none;
     border-radius: 4px;
     transition: background-color 0.2s ease, opacity 0.2s ease;
 }
+
 #generate-button:hover {
-    background-color: #005a9e;
+    background-color: #404580; /* Darker purple on hover */
 }
+
 #generate-button:disabled {
-    background-color: #a19f9d;
+    background-color: #A6ACE5; /* Lighter, muted purple when disabled */
     cursor: not-allowed;
     opacity: 0.8;
 }
+
 #generate-button.success {
-    background-color: #107c10;
+    background-color: #107c10; /* Keep universal green */
 }
+
 #generate-button.error {
-    background-color: #d83b01;
+    background-color: #d83b01; /* Keep universal red */
 }
