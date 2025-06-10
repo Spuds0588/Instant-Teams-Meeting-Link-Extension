@@ -7,15 +7,31 @@ body {
     background-color: #fdfdfd;
 }
 
-.header { /* ... unchanged ... */ }
-h1 { /* ... unchanged ... */ }
+.header {
+    background-color: #464775;
+    color: white;
+    padding: 12px 16px;
+    text-align: center;
+}
+
+h1 {
+    font-size: 16px;
+    margin: 0;
+    font-weight: 600;
+}
+
 #links-container {
     padding: 0;
     max-height: 300px;
     overflow-y: auto;
     border-bottom: 1px solid #e0e0e0;
 }
-#links-list { list-style: none; padding: 0; margin: 0; }
+
+#links-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
 
 .link-item {
     display: flex;
@@ -25,13 +41,16 @@ h1 { /* ... unchanged ... */ }
     border-bottom: 1px solid #f0f0f0;
     transition: opacity 0.3s ease;
 }
-.link-item:last-child { border-bottom: none; }
+
+.link-item:last-child {
+    border-bottom: none;
+}
 
 .link-info {
     display: flex;
     flex-direction: column;
     margin-right: 10px;
-    min-width: 0; /* Prevents flexbox from overflowing */
+    min-width: 0;
 }
 
 .link-title {
@@ -73,15 +92,70 @@ h1 { /* ... unchanged ... */ }
     background-color: #f5f5f5;
     transition: background-color 0.2s ease, color 0.2s ease;
 }
-.copy-button:hover { background-color: #e0e0e0; }
-.copy-button.copied { background-color: #107c10; color: white; border-color: #107c10; }
+
+.copy-button:hover {
+    background-color: #e0e0e0;
+}
+
+.copy-button.copied {
+    background-color: #107c10;
+    color: white;
+    border-color: #107c10;
+}
 
 .remove-button {
     background-color: #fbeae5;
     color: #c42b1c;
     border-color: #f1bdb6;
 }
-.remove-button:hover { background-color: #f1bdb6; }
 
+.remove-button:hover {
+    background-color: #f1bdb6;
+}
 
-#empty-message, .footer, #generate-button { /* ... unchanged ... */ }
+#empty-message {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+}
+
+.hidden {
+    display: none;
+}
+
+.footer {
+    padding: 12px;
+    background-color: #f5f5f5;
+}
+
+#generate-button {
+    width: 100%;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    background-color: #0078d4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+#generate-button:hover {
+    background-color: #005a9e;
+}
+
+#generate-button:disabled {
+    background-color: #a19f9d;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+#generate-button.success {
+    background-color: #107c10;
+}
+
+#generate-button.error {
+    background-color: #d83b01;
+}

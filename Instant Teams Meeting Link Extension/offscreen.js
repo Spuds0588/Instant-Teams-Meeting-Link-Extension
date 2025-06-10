@@ -6,7 +6,6 @@ function handleMessages(message) {
     return;
   }
   
-  // Use a temporary textarea element to reliably copy text.
   const input = document.createElement('textarea');
   document.body.appendChild(input);
   input.value = message.text;
@@ -17,11 +16,8 @@ function handleMessages(message) {
   
   document.body.removeChild(input);
 
-  // Send a response back to the background script indicating the outcome.
   chrome.runtime.sendMessage({ type: 'copyToClipboardResponse', success: success });
 
-  // CRITICAL FIX: Wait a moment before closing to ensure the message is sent.
-  // This prevents a race condition where the document closes before the message handler
-  // in the background script can receive the response.
+  // Wait a moment before closing to ensure the message is sent.
   setTimeout(() => window.close(), 100);
 }

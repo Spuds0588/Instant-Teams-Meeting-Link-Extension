@@ -12,7 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // THIS FUNCTION WAS PREVIOUSLY A BROKEN PLACEHOLDER. IT IS NOW FULLY IMPLEMENTED.
     function handleGenerateClick() {
         generateButton.disabled = true;
         generateButton.textContent = 'Generating...';
@@ -37,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadRecentLinks() {
         chrome.runtime.sendMessage({ type: 'getRecentLinks' }, (response) => {
             if (!response || chrome.runtime.lastError) {
+                linksList.innerHTML = '';
                 emptyMessage.textContent = 'Error loading links.';
                 emptyMessage.classList.remove('hidden');
                 return;
