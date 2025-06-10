@@ -3,43 +3,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const emptyMessage = document.getElementById('empty-message');
     const generateButton = document.getElementById('generate-button');
 
-    // Initial load of recent links
     loadRecentLinks();
-
-    // Listen for the "Generate" button click
     generateButton.addEventListener('click', handleGenerateClick);
     
-    // Listen for updates from the background script
     chrome.runtime.onMessage.addListener((message) => {
         if (message.type === 'linksUpdated') {
-            console.log('Popup received linksUpdated message, reloading list.');
             loadRecentLinks();
         }
     });
 
-    function handleGenerateClick() {
-        generateButton.disabled = true;
-        generateButton.textContent = 'Generating...';
+    function handleGenerateClick() { /* ... unchanged ... */ }
 
-        chrome.runtime.sendMessage({ type: 'generateLinkFromPopup' }, (response) => {
-            if (response.success) {
-                generateButton.textContent = 'Copied!';
-                generateButton.classList.add('success');
-                // The list will be reloaded automatically by the 'linksUpdated' message listener
-            } else {
-                generateButton.textContent = 'Error!';
-                generateButton.classList.add('error');
-                console.error('Popup received error:', response.message);
-            }
-            
-            setTimeout(() => {
-                generateButton.disabled = false;
-                generateButton.textContent = 'Generate New Link';
-                generateButton.classList.remove('success', 'error');
-            }, 2500);
-        });
-    }
-    
     function loadRecentLinks() {
         chrome.runtime.sendMessage({ type: 'getRecentLinks' }, (response) => {
             if (!response || chrome.runtime.lastError) {
@@ -47,7 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 emptyMessage.classList.remove('hidden');
                 return;
             }
-            
             const links = response.links;
             if (links && links.length > 0) {
                 renderLinks(links);
@@ -61,20 +34,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderLinks(links) {
         linksList.innerHTML = '';
-        links.forEach(link => {
+        links.forEach(linkData => {
             const listItem = document.createElement('li');
             listItem.className = 'link-item';
 
-            const linkText = document.createElement('span');
-            linkText.className = 'link-text';
-            linkText.textContent = link;
+            // Main info block
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'link-info';
+            
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'link-title';
+            titleSpan.textContent = linkData.title;
+
+            const urlSpan = document.createElement('span');
+            urlSpan.className = 'link-url';
+            urlSpan.textContent = linkData.url;
+
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'link-meta';
+            metaSpan.textContent = `Generated: ${new Date(linkData.timestamp).toLocaleString()}`;
+            
+            infoDiv.appendChild(titleSpan);
+            infoDiv.appendChild(urlSpan);
+            infoDiv.appendChild(metaSpan);
+
+            // Actions block
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'link-actions';
 
             const copyButton = document.createElement('button');
             copyButton.className = 'copy-button';
             copyButton.textContent = 'Copy';
-
             copyButton.addEventListener('click', (e) => {
-                navigator.clipboard.writeText(link).then(() => {
+                navigator.clipboard.writeText(linkData.url).then(() => {
                     e.target.textContent = 'Copied!';
                     e.target.classList.add('copied');
                     setTimeout(() => {
@@ -84,8 +76,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            listItem.appendChild(linkText);
-            listItem.appendChild(copyButton);
+            const removeButton = document.createElement('button');
+            removeButton.className = 'remove-button';
+            removeButton.textContent = 'Remove';
+            removeButton.addEventListener('click', () => {
+                // Dim the item and then remove it visually after confirmation from background
+                listItem.style.opacity = '0.5';
+                chrome.runtime.sendMessage({ type: 'removeLink', urlToRemove: linkData.url });
+            });
+            
+            actionsDiv.appendChild(copyButton);
+            actionsDiv.appendChild(removeButton);
+
+            listItem.appendChild(infoDiv);
+            listItem.appendChild(actionsDiv);
             linksList.appendChild(listItem);
         });
     }

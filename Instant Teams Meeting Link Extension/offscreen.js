@@ -20,6 +20,8 @@ function handleMessages(message) {
   // Send a response back to the background script indicating the outcome.
   chrome.runtime.sendMessage({ type: 'copyToClipboardResponse', success: success });
 
-  // ** THE FIX IS HERE: Close the offscreen document now that its job is complete. **
-  window.close();
+  // CRITICAL FIX: Wait a moment before closing to ensure the message is sent.
+  // This prevents a race condition where the document closes before the message handler
+  // in the background script can receive the response.
+  setTimeout(() => window.close(), 100);
 }
