@@ -12,7 +12,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function handleGenerateClick() { /* ... unchanged ... */ }
+    // THIS FUNCTION WAS PREVIOUSLY A BROKEN PLACEHOLDER. IT IS NOW FULLY IMPLEMENTED.
+    function handleGenerateClick() {
+        generateButton.disabled = true;
+        generateButton.textContent = 'Generating...';
+
+        chrome.runtime.sendMessage({ type: 'generateLinkFromPopup' }, (response) => {
+            if (response && response.success) {
+                generateButton.textContent = 'Copied!';
+                generateButton.classList.add('success');
+            } else {
+                generateButton.textContent = 'Error!';
+                generateButton.classList.add('error');
+            }
+            
+            setTimeout(() => {
+                generateButton.disabled = false;
+                generateButton.textContent = 'Generate New Link';
+                generateButton.classList.remove('success', 'error');
+            }, 2500);
+        });
+    }
 
     function loadRecentLinks() {
         chrome.runtime.sendMessage({ type: 'getRecentLinks' }, (response) => {
@@ -38,7 +58,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const listItem = document.createElement('li');
             listItem.className = 'link-item';
 
-            // Main info block
             const infoDiv = document.createElement('div');
             infoDiv.className = 'link-info';
             
@@ -58,7 +77,6 @@ document.addEventListener('DOMContentLoaded', () => {
             infoDiv.appendChild(urlSpan);
             infoDiv.appendChild(metaSpan);
 
-            // Actions block
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'link-actions';
 
@@ -80,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () => {
             removeButton.className = 'remove-button';
             removeButton.textContent = 'Remove';
             removeButton.addEventListener('click', () => {
-                // Dim the item and then remove it visually after confirmation from background
                 listItem.style.opacity = '0.5';
                 chrome.runtime.sendMessage({ type: 'removeLink', urlToRemove: linkData.url });
             });
