@@ -20,7 +20,7 @@ const MAX_RECENT_LINKS = 3;
 chrome.runtime.onInstalled.addListener(() => {
   if (AZURE_APP_CLIENT_ID === 'YOUR_AZURE_APPLICATION_CLIENT_ID_GOES_HERE') {
     console.error("CRITICAL: Azure Client ID is not set in background.js.");
-    showNotification('setup-error', 'Extension Setup Error', 'The Azure Client ID is missing. Please configure the extension.');
+    showNotification('setup-error', 'Extension Setup Error', 'The Azure Client ID is missing.');
     return;
   }
   chrome.contextMenus.create({
@@ -41,13 +41,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get([RECENT_LINKS_STORAGE_KEY]).then(result => {
       sendResponse({ links: result[RECENT_LINKS_STORAGE_KEY] || [] });
     });
-    return true; // async response
+    return true;
   }
   if (message.type === 'generateLinkFromPopup') {
     handleGenerateRequest({ from: 'popup' })
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, message: err.userMessage || 'An unknown error occurred.' }));
-    return true; // async response
+    return true;
   }
 });
 
@@ -58,24 +58,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleGenerateRequest(request) {
   try {
     const meetingUrl = await performLinkGeneration();
-    
-    await copyToClipboard(meetingUrl); // This now throws an error on failure
-    console.log('Successfully copied link to clipboard.');
-
-    await storeMeetingLink(meetingUrl); // Now this will always run on success
-    console.log('Successfully stored link.');
+    await copyToClipboard(meetingUrl); // This will now throw an error on failure
+    await storeMeetingLink(meetingUrl);
 
     if (request.from === 'contextMenu') {
       await attemptPageInjection(request.tabId, meetingUrl);
     } else {
-      // If from popup, we still want a confirmation notification.
-      showNotification('popup-success', 'Link Created!', 'A new Teams meeting link has been copied to your clipboard.');
+      showNotification('popup-success', 'Link Created!', 'New link copied to your clipboard.');
     }
-
     return { success: true, url: meetingUrl };
-
   } catch (error) {
-    console.error('Error during meeting generation flow:', error);
+    console.error('Error during generation flow:', error);
     const userMessage = error.userMessage || error.message || 'An unexpected error occurred.';
     showNotification('error-notification', 'Error', userMessage);
     return { success: false, message: userMessage };
@@ -85,7 +78,7 @@ async function handleGenerateRequest(request) {
 async function performLinkGeneration() {
   if (!navigator.onLine) {
     const err = new Error('Network offline.');
-    err.userMessage = 'Network connection unavailable. Please check your connection.';
+    err.userMessage = 'Network connection unavailable.';
     throw err;
   }
   const token = await getAuthToken(true);
@@ -97,14 +90,9 @@ async function performLinkGeneration() {
 async function attemptPageInjection(tabId, url) {
   try {
     await injectScript(tabId, insertAndReplaceText, [url]);
-    showNotification('injection-success', 'Success!', 'Teams link inserted and copied to clipboard.');
+    showNotification('injection-success', 'Success!', 'Teams link inserted and copied.');
   } catch (injectionError) {
-    console.warn('Script injection failed, falling back to notification.');
-    showNotification(
-      'injection-failed',
-      'Link Copied!',
-      'Could not insert the link on the page, but it has been copied to your clipboard.'
-    );
+    showNotification('injection-failed', 'Link Copied', 'Could not insert link on page, but it is on your clipboard.');
   }
 }
 
@@ -112,40 +100,34 @@ async function attemptPageInjection(tabId, url) {
 //                           UTILITY & API FUNCTIONS
 // =================================================================================
 
-/**
- * Ensures the offscreen document is available for use.
- */
 async function setupOffscreenDocument() {
+  const path = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
   const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
+    contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+    documentUrls: [path]
   });
-  if (existingContexts.length > 0) {
-    return; // Already exists
-  }
-  console.log('Creating offscreen document.');
+  if (existingContexts.length > 0) { return; }
+
   await chrome.offscreen.createDocument({
-    url: OFFSCREEN_DOCUMENT_PATH,
-    reasons: ['CLIPBOARD'],
+    url: path,
+    reasons: [chrome.offscreen.Reason.CLIPBOARD],
     justification: 'Required for copying text to the clipboard.',
   });
 }
 
-/**
- * Copies text to the clipboard using the offscreen API with robust promise-based feedback.
- * @param {string} text - The text to copy.
- * @returns {Promise<void>} Resolves on success, rejects on failure.
- */
 async function copyToClipboard(text) {
   await setupOffscreenDocument();
   return new Promise((resolve, reject) => {
     const listener = (message) => {
       if (message.type === 'copyToClipboardResponse') {
         chrome.runtime.onMessage.removeListener(listener);
+        // Clean up the offscreen document.
+        chrome.offscreen.close().catch(err => console.error("Error closing offscreen doc:", err));
         if (message.success) {
           resolve();
         } else {
           const err = new Error("Clipboard copy failed.");
-          err.userMessage = "Could not copy the link to the clipboard. Please try again.";
+          err.userMessage = "Could not copy the link to the clipboard.";
           reject(err);
         }
       }
@@ -156,83 +138,54 @@ async function copyToClipboard(text) {
 }
 
 function showNotification(id, title, message) {
-  try {
-    console.log(`Showing notification '${id}': Title='${title}', Message='${message}'`);
-    chrome.notifications.create(id, {
-      type: 'basic', iconUrl: 'icons/icon128.png', title: title, message: message, priority: 2
-    });
-  } catch(e) {
-    console.error("Failed to create a notification:", e);
-  }
+  chrome.notifications.create(id, {
+    type: 'basic', iconUrl: 'icons/icon128.png', title: title, message: message, priority: 2
+  });
 }
 
 async function storeMeetingLink(joinUrl) {
-    const result = await chrome.storage.local.get([RECENT_LINKS_STORAGE_KEY]);
-    const links = result[RECENT_LINKS_STORAGE_KEY] || [];
-    links.unshift(joinUrl);
-    const trimmedLinks = links.slice(0, MAX_RECENT_LINKS);
-    await chrome.storage.local.set({ [RECENT_LINKS_STORAGE_KEY]: trimmedLinks });
-    // Proactively notify any open popup that the data has changed
-    chrome.runtime.sendMessage({ type: 'linksUpdated' }).catch(e => {
-        // This will error if no popup is open, which is fine.
-        if (e.message.includes("Could not establish connection")) {
-            return;
-        }
-        console.warn("Could not notify popup of update:", e);
-    });
+  const result = await chrome.storage.local.get([RECENT_LINKS_STORAGE_KEY]);
+  const links = result[RECENT_LINKS_STORAGE_KEY] || [];
+  links.unshift(joinUrl);
+  const trimmedLinks = links.slice(0, MAX_RECENT_LINKS);
+  await chrome.storage.local.set({ [RECENT_LINKS_STORAGE_KEY]: trimmedLinks });
+  chrome.runtime.sendMessage({ type: 'linksUpdated' }).catch(e => {});
 }
 
 async function injectScript(tabId, func, args) {
-  try {
-    await chrome.scripting.executeScript({ target: { tabId }, func, args });
-  } catch(e) {
-    throw new Error(`Script injection failed: ${e.message}`);
-  }
+  await chrome.scripting.executeScript({ target: { tabId }, func, args });
 }
 
-// =================================================================================
-//                 INJECTABLE CONTENT SCRIPT FUNCTION
-// =================================================================================
-/**
- * A single function to inject that first inserts a placeholder, then replaces it.
- * This is more efficient than two separate injections.
- * @param {string} finalUrl - The final URL to insert.
- */
 function insertAndReplaceText(finalUrl) {
   const placeholder = '*Generating meeting link...*';
-  const el = document.activeElement;
-  if (!el) return;
-
+  const el = document.activeElement; if (!el) return;
   function insertText(text) {
     if (el.isContentEditable) {
-        const selection = window.getSelection();
-        if (selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            range.deleteContents();
-            range.insertNode(document.createTextNode(text));
-        }
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(document.createTextNode(text));
+      }
     } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-        const start = el.selectionStart, end = el.selectionEnd;
-        el.value = el.value.substring(0, start) + text + el.value.substring(end);
-        el.selectionStart = el.selectionEnd = start + text.length;
+      const start = el.selectionStart, end = el.selectionEnd;
+      el.value = el.value.substring(0, start) + text + el.value.substring(end);
+      el.selectionStart = el.selectionEnd = start + text.length;
     }
   }
-
   insertText(placeholder);
-  
-  // Now replace the placeholder with the real URL
   if (el.value?.includes(placeholder)) {
-      el.value = el.value.replace(placeholder, finalUrl);
+    el.value = el.value.replace(placeholder, finalUrl);
   } else if (el.isContentEditable) {
-      el.innerHTML = el.innerHTML.replace(placeholder, `<a href="${finalUrl}">${finalUrl}</a>`);
+    el.innerHTML = el.innerHTML.replace(placeholder, `<a href="${finalUrl}">${finalUrl}</a>`);
   }
 }
 
 // =================================================================================
 //                AUTHENTICATION & GRAPH API (UNCHANGED SECTION)
 // =================================================================================
-async function getAuthToken(interactive) {try {const tokenInfo = await chrome.storage.local.get(['accessToken', 'refreshToken', 'tokenExpires']);if (tokenInfo.accessToken && tokenInfo.tokenExpires && new Date(tokenInfo.tokenExpires) > new Date()) {return tokenInfo.accessToken;}if (tokenInfo.refreshToken) {return await refreshAccessToken(tokenInfo.refreshToken);}if (interactive) {return await performInteractiveLogin();} const err=new Error("No valid token and non-interactive."); err.userMessage = "Please log in to Microsoft Teams first via the popup or context menu."; throw err;} catch (error) {console.error('Error in getAuthToken:', error); const customError = new Error('Authentication process failed.'); customError.userMessage = error.userMessage || 'Could not authenticate with Microsoft. Please try again.'; throw customError;}}
-async function performInteractiveLogin() {const { verifier, challenge } = await generatePkceChallenge();const redirectUri = chrome.identity.getRedirectURL();const authUrl = new URL(MS_AUTH_ENDPOINT);authUrl.searchParams.append('client_id', AZURE_APP_CLIENT_ID);authUrl.searchParams.append('response_type', 'code');authUrl.searchParams.append('redirect_uri', redirectUri);authUrl.searchParams.append('scope', MS_GRAPH_SCOPES.join(' '));authUrl.searchParams.append('code_challenge', challenge);authUrl.searchParams.append('code_challenge_method', 'S256');authUrl.searchParams.append('prompt', 'select_account');const resultUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl.href, interactive: true });if (chrome.runtime.lastError || !resultUrl) {throw new Error(`Login failed or was cancelled. ${chrome.runtime.lastError?.message || ''}`);}const authCode = new URL(resultUrl).searchParams.get('code');if (!authCode) { throw new Error('Could not extract authorization code.'); }return await exchangeCodeForTokens(authCode, verifier, redirectUri);}
+async function getAuthToken(interactive) {try {const tokenInfo = await chrome.storage.local.get(['accessToken', 'refreshToken', 'tokenExpires']);if (tokenInfo.accessToken && tokenInfo.tokenExpires && new Date(tokenInfo.tokenExpires) > new Date()) {return tokenInfo.accessToken;}if (tokenInfo.refreshToken) {return await refreshAccessToken(tokenInfo.refreshToken);}if (interactive) {return await performInteractiveLogin();} const err=new Error("No valid token and non-interactive."); err.userMessage = "Please log in to Microsoft Teams first."; throw err;} catch (error) { const customError = new Error('Authentication process failed.'); customError.userMessage = error.userMessage || 'Could not authenticate with Microsoft.'; throw customError;}}
+async function performInteractiveLogin() {const { verifier, challenge } = await generatePkceChallenge();const redirectUri = chrome.identity.getRedirectURL();const authUrl = new URL(MS_AUTH_ENDPOINT);authUrl.searchParams.append('client_id', AZURE_APP_CLIENT_ID);authUrl.searchParams.append('response_type', 'code');authUrl.searchParams.append('redirect_uri', redirectUri);authUrl.searchParams.append('scope', MS_GRAPH_SCOPES.join(' '));authUrl.searchParams.append('code_challenge', challenge);authUrl.searchParams.append('code_challenge_method', 'S256');authUrl.searchParams.append('prompt', 'select_account');const resultUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl.href, interactive: true });if (chrome.runtime.lastError || !resultUrl) {throw new Error(`Login failed or was cancelled.`);}const authCode = new URL(resultUrl).searchParams.get('code');if (!authCode) { throw new Error('Could not extract authorization code.'); }return await exchangeCodeForTokens(authCode, verifier, redirectUri);}
 async function exchangeCodeForTokens(authCode, codeVerifier, redirectUri) {const tokenRequestBody = new URLSearchParams({client_id: AZURE_APP_CLIENT_ID, grant_type: 'authorization_code',code: authCode, redirect_uri: redirectUri, code_verifier: codeVerifier,});const response = await fetch(MS_TOKEN_ENDPOINT, {method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: tokenRequestBody,});const tokenData = await response.json();if (!response.ok) { throw new Error(`Token exchange failed: ${tokenData.error_description || response.statusText}`); }await storeTokens(tokenData);return tokenData.access_token;}
 async function refreshAccessToken(refreshToken) {const tokenRequestBody = new URLSearchParams({client_id: AZURE_APP_CLIENT_ID, grant_type: 'refresh_token',refresh_token: refreshToken, scope: MS_GRAPH_SCOPES.join(' '),});try {const response = await fetch(MS_TOKEN_ENDPOINT, {method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: tokenRequestBody,});const tokenData = await response.json();if (!response.ok) {await chrome.storage.local.remove(['accessToken', 'refreshToken', 'tokenExpires']);const authError = new Error('Session expired.');authError.userMessage = "Your session has expired. Please log back in.";throw authError;}await storeTokens(tokenData);return tokenData.access_token;} catch (error) { throw error; }}
 async function storeTokens(tokenData) {const expiryTime = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();await chrome.storage.local.set({accessToken: tokenData.access_token, refreshToken: tokenData.refresh_token, tokenExpires: expiryTime,});}
