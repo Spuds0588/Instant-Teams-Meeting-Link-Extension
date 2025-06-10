@@ -1,32 +1,65 @@
 document.addEventListener('DOMContentLoaded', () => {
     const linksList = document.getElementById('links-list');
     const emptyMessage = document.getElementById('empty-message');
+    const generateButton = document.getElementById('generate-button');
 
-    // Request the recent links from the background script
-    chrome.runtime.sendMessage({ type: 'getRecentLinks' }, (response) => {
-        if (chrome.runtime.lastError) {
-            console.error('Error getting recent links:', chrome.runtime.lastError);
-            emptyMessage.textContent = 'Error loading links.';
-            emptyMessage.classList.remove('hidden');
-            return;
-        }
-        
-        const links = response.links;
-        if (links && links.length > 0) {
-            renderLinks(links);
-            emptyMessage.classList.add('hidden');
-        } else {
-            linksList.innerHTML = ''; // Clear any existing list items
-            emptyMessage.classList.remove('hidden');
-        }
+    // Initial load of recent links
+    loadRecentLinks();
+
+    // Event listener for the generate button
+    generateButton.addEventListener('click', () => {
+        generateButton.disabled = true;
+        generateButton.textContent = 'Generating...';
+
+        chrome.runtime.sendMessage({ type: 'generateLinkFromPopup' }, (response) => {
+            if (response.success) {
+                generateButton.textContent = 'Copied!';
+                generateButton.classList.add('success');
+                // Refresh the list to show the new link
+                loadRecentLinks();
+            } else {
+                generateButton.textContent = 'Error!';
+                generateButton.classList.add('error');
+                console.error('Popup received error:', response.message);
+            }
+            
+            // Reset button state after a delay
+            setTimeout(() => {
+                generateButton.disabled = false;
+                generateButton.textContent = 'Generate New Link';
+                generateButton.classList.remove('success', 'error');
+            }, 2500);
+        });
     });
 
     /**
-     * Renders the list of links in the popup.
-     * @param {string[]} links - An array of meeting URL strings.
+     * Fetches and renders the list of recent links.
+     */
+    function loadRecentLinks() {
+        chrome.runtime.sendMessage({ type: 'getRecentLinks' }, (response) => {
+            if (chrome.runtime.lastError) {
+                emptyMessage.textContent = 'Error loading links.';
+                emptyMessage.classList.remove('hidden');
+                return;
+            }
+            
+            const links = response.links;
+            if (links && links.length > 0) {
+                renderLinks(links);
+                emptyMessage.classList.add('hidden');
+            } else {
+                linksList.innerHTML = '';
+                emptyMessage.classList.remove('hidden');
+            }
+        });
+    }
+
+    /**
+     * Renders the list items in the popup.
+     * @param {string[]} links - Array of URL strings.
      */
     function renderLinks(links) {
-        linksList.innerHTML = ''; // Clear the list before rendering
+        linksList.innerHTML = '';
         links.forEach(link => {
             const listItem = document.createElement('li');
             listItem.className = 'link-item';
@@ -39,20 +72,14 @@ document.addEventListener('DOMContentLoaded', () => {
             copyButton.className = 'copy-button';
             copyButton.textContent = 'Copy';
 
-            copyButton.addEventListener('click', (event) => {
-                // Use the modern clipboard API, which works in popups
+            copyButton.addEventListener('click', (e) => {
                 navigator.clipboard.writeText(link).then(() => {
-                    // Provide feedback to the user
-                    event.target.textContent = 'Copied!';
-                    event.target.classList.add('copied');
+                    e.target.textContent = 'Copied!';
+                    e.target.classList.add('copied');
                     setTimeout(() => {
-                        event.target.textContent = 'Copy';
-                        event.target.classList.remove('copied');
+                        e.target.textContent = 'Copy';
+                        e.target.classList.remove('copied');
                     }, 2000);
-                }).catch(err => {
-                    console.error('Failed to copy link from popup:', err);
-                    // Optionally show an error state on the button
-                    event.target.textContent = 'Error';
                 });
             });
 

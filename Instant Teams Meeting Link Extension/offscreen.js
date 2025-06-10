@@ -1,32 +1,27 @@
 // This script runs in the offscreen document.
-
 chrome.runtime.onMessage.addListener(handleMessages);
 
-function handleMessages(message) {
+function handleMessages(message, sender, sendResponse) {
   // Return early if this message isn't meant for us.
-  if (message.target !== 'offscreen') {
+  if (message.target !== 'offscreen' || message.type !== 'copy-to-clipboard') {
     return;
   }
 
-  if (message.type === 'copy-to-clipboard') {
-    handleCopyToClipboard(message.text);
-  }
+  handleCopyToClipboard(message.text);
 }
 
 /**
- * Copies the provided text to the system clipboard.
+ * Copies text and sends a response message indicating success or failure.
  * @param {string} text - The text to copy.
  */
-async function handleCopyToClipboard(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    console.log('Offscreen: Text successfully copied to clipboard.');
-  } catch (error) {
-    console.error('Offscreen: Failed to copy text to clipboard.', error);
-  } finally {
-    // We can close the offscreen document after the operation to conserve resources.
-    // However, for rapid successive calls, keeping it open might be better.
-    // For this use case, closing it is fine.
-    window.close();
-  }
+function handleCopyToClipboard(text) {
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      console.log("Offscreen: Text copied successfully.");
+      chrome.runtime.sendMessage({ type: 'copyToClipboardResponse', success: true });
+    })
+    .catch(err => {
+      console.error("Offscreen: Failed to copy text.", err);
+      chrome.runtime.sendMessage({ type: 'copyToClipboardResponse', success: false });
+    });
 }
