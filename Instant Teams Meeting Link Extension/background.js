@@ -41,13 +41,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get([RECENT_LINKS_STORAGE_KEY]).then(result => {
       sendResponse({ links: result[RECENT_LINKS_STORAGE_KEY] || [] });
     });
-    return true;
+    return true; // async response
   }
   if (message.type === 'generateLinkFromPopup') {
     handleGenerateRequest({ from: 'popup' })
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, message: err.userMessage || 'An unknown error occurred.' }));
-    return true;
+    return true; // async response
   }
 });
 
@@ -58,7 +58,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleGenerateRequest(request) {
   try {
     const meetingUrl = await performLinkGeneration();
-    await copyToClipboard(meetingUrl); // This will now throw an error on failure
+    await copyToClipboard(meetingUrl); // This will throw an error on failure
     await storeMeetingLink(meetingUrl);
 
     if (request.from === 'contextMenu') {
@@ -92,6 +92,7 @@ async function attemptPageInjection(tabId, url) {
     await injectScript(tabId, insertAndReplaceText, [url]);
     showNotification('injection-success', 'Success!', 'Teams link inserted and copied.');
   } catch (injectionError) {
+    console.warn("Injection failed. This is expected on some pages.");
     showNotification('injection-failed', 'Link Copied', 'Could not insert link on page, but it is on your clipboard.');
   }
 }
@@ -102,12 +103,18 @@ async function attemptPageInjection(tabId, url) {
 
 async function setupOffscreenDocument() {
   const path = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+  // Use a more robust check for existing contexts
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
     documentUrls: [path]
   });
-  if (existingContexts.length > 0) { return; }
 
+  if (existingContexts.length > 0) {
+    console.log("Offscreen document already exists.");
+    return;
+  }
+
+  console.log("Creating offscreen document.");
   await chrome.offscreen.createDocument({
     url: path,
     reasons: [chrome.offscreen.Reason.CLIPBOARD],
@@ -120,19 +127,26 @@ async function copyToClipboard(text) {
   return new Promise((resolve, reject) => {
     const listener = (message) => {
       if (message.type === 'copyToClipboardResponse') {
+        // Stop listening for this specific message
         chrome.runtime.onMessage.removeListener(listener);
-        // Clean up the offscreen document.
-        chrome.offscreen.close().catch(err => console.error("Error closing offscreen doc:", err));
+        
+        // ** THE FIX IS HERE: The incorrect `chrome.offscreen.close()` call is removed. **
+        // The offscreen document will now close itself.
+        
         if (message.success) {
+          console.log("Background: Received success from offscreen copy.");
           resolve();
         } else {
-          const err = new Error("Clipboard copy failed.");
+          console.error("Background: Received failure from offscreen copy.");
+          const err = new Error("Clipboard copy failed in offscreen document.");
           err.userMessage = "Could not copy the link to the clipboard.";
           reject(err);
         }
       }
     };
     chrome.runtime.onMessage.addListener(listener);
+
+    console.log("Background: Sending copy request to offscreen document.");
     chrome.runtime.sendMessage({ type: 'copy-to-clipboard', target: 'offscreen', text: text });
   });
 }
@@ -149,7 +163,12 @@ async function storeMeetingLink(joinUrl) {
   links.unshift(joinUrl);
   const trimmedLinks = links.slice(0, MAX_RECENT_LINKS);
   await chrome.storage.local.set({ [RECENT_LINKS_STORAGE_KEY]: trimmedLinks });
-  chrome.runtime.sendMessage({ type: 'linksUpdated' }).catch(e => {});
+  // Notify any open popups to refresh their list
+  chrome.runtime.sendMessage({ type: 'linksUpdated' }).catch(e => {
+      // This error is expected if the popup is not open, so we can ignore it.
+      if (e.message.includes("Could not establish connection")) { return; }
+      console.warn("Could not notify popup of update:", e);
+  });
 }
 
 async function injectScript(tabId, func, args) {
@@ -163,8 +182,7 @@ function insertAndReplaceText(finalUrl) {
     if (el.isContentEditable) {
       const selection = window.getSelection();
       if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
+        const range = selection.getRangeAt(0); range.deleteContents();
         range.insertNode(document.createTextNode(text));
       }
     } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
