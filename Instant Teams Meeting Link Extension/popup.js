@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         chrome.runtime.sendMessage({ type: 'generateLinkFromPopup' }, (response) => {
             if (response && response.success) {
-                generateButton.textContent = 'Copied!';
+                generateButton.textContent = 'Added!';
                 generateButton.classList.add('success');
             } else {
                 generateButton.textContent = 'Error!';

@@ -1,15 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Instant Teams Meeting Link",
-  "version": "1.3",
+  "version": "2.0",
   "description": "Quickly generate and insert a Microsoft Teams meeting link via the right-click menu or popup.",
   "permissions": [
     "contextMenus",
     "storage",
     "scripting",
     "notifications",
-    "identity",
-    "offscreen"
+    "identity"
   ],
   "host_permissions": [
     "<all_urls>"

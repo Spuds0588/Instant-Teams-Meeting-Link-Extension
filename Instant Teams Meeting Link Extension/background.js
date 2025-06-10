@@ -9,7 +9,6 @@ const MS_GRAPH_ONLINE_MEETINGS_ENDPOINT = 'https://graph.microsoft.com/v1.0/me/o
 const MS_AUTH_ENDPOINT = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 const MS_TOKEN_ENDPOINT = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
 const CONTEXT_MENU_ID = 'generateTeamsMeetingLink';
-const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const RECENT_LINKS_STORAGE_KEY = 'recentMeetingLinks';
 const MAX_RECENT_LINKS = 3;
 
@@ -18,8 +17,6 @@ const MAX_RECENT_LINKS = 3;
 // =================================================================================
 
 chrome.runtime.onInstalled.addListener(() => {
-  // **FIX #1: Create the context menu immediately.**
-  // The check for the client ID should only show a warning, not block setup.
   chrome.contextMenus.create({
     id: CONTEXT_MENU_ID,
     title: 'Generate Teams Meeting Join Link',
@@ -66,7 +63,8 @@ async function handleGenerateRequest(request) {
         throw new Error("Azure Client ID is not configured.");
     }
     const meetingUrl = await performLinkGeneration();
-    await copyToClipboard(meetingUrl);
+
+    // The auto-clipboard step is completely removed.
 
     const linkData = {
       url: meetingUrl,
@@ -78,7 +76,8 @@ async function handleGenerateRequest(request) {
     if (request.from === 'contextMenu') {
       await attemptPageInjection(request.tab.id, meetingUrl);
     } else {
-      showNotification('popup-success', 'Link Created!', 'New link copied to your clipboard.');
+      // If generated from popup, the link is now in history. Let the user copy it from there.
+      showNotification('popup-success', 'Link Created!', 'A new meeting link has been added to your history.');
     }
     return { success: true, url: meetingUrl };
   } catch (error) {
@@ -104,9 +103,11 @@ async function performLinkGeneration() {
 async function attemptPageInjection(tabId, url) {
   try {
     await injectScript(tabId, insertAndReplaceText, [url]);
-    showNotification('injection-success', 'Success!', 'Teams link inserted and copied.');
+    // Updated notification text
+    showNotification('injection-success', 'Success!', 'Teams meeting link has been inserted.');
   } catch (injectionError) {
-    showNotification('injection-failed', 'Link Copied', 'Could not insert link on page, but it is on your clipboard.');
+    // Updated notification text to guide the user to the popup
+    showNotification('injection-failed', 'Insertion Failed', 'Could not insert link. It is available in the popup.');
   }
 }
 
@@ -128,47 +129,7 @@ async function removeMeetingLink(urlToRemove) {
   let links = result[RECENT_LINKS_STORAGE_KEY] || [];
   links = links.filter(link => link.url !== urlToRemove);
   await chrome.storage.local.set({ [RECENT_LINKS_STORAGE_KEY]: links });
-  // **FIX #3: Notify the popup that links have changed after removal.**
   chrome.runtime.sendMessage({ type: 'linksUpdated' }).catch(e => {});
-}
-
-async function copyToClipboard(text) {
-  await setupOffscreenDocument();
-  return new Promise((resolve, reject) => {
-    const listener = (message) => {
-      if (message.type === 'copyToClipboardResponse') {
-        chrome.runtime.onMessage.removeListener(listener);
-        if (message.success) {
-          resolve();
-        } else {
-          const err = new Error("Clipboard copy failed.");
-          err.userMessage = "Could not copy link to the clipboard.";
-          reject(err);
-        }
-      }
-    };
-    chrome.runtime.onMessage.addListener(listener);
-    chrome.runtime.sendMessage({ type: 'copy-to-clipboard', target: 'offscreen', text: text });
-  });
-}
-
-async function setupOffscreenDocument() {
-  const path = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
-  // **FIX #2: Use the correct string literal "OFFSCREEN_DOCUMENT"**
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ["OFFSCREEN_DOCUMENT"],
-    documentUrls: [path]
-  });
-
-  if (existingContexts.length > 0) {
-    return;
-  }
-  
-  await chrome.offscreen.createDocument({
-    url: path,
-    reasons: ["CLIPBOARD"],
-    justification: 'Required for copying text to the clipboard.',
-  });
 }
 
 function showNotification(id, title, message) {
@@ -177,7 +138,7 @@ function showNotification(id, title, message) {
   });
 }
 
-// ... The rest of the file (injectScript, auth, graph api calls) is unchanged but included for completeness ...
+// ...The rest of the file is unchanged but included for completeness...
 async function injectScript(tabId, func, args) {
   await chrome.scripting.executeScript({ target: { tabId }, func, args });
 }
